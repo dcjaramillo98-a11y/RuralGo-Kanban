@@ -12,23 +12,34 @@ jobs:
       PROJECT_NUMBER: "1"
 
     steps:
-      - name: Limpiar elementos actuales del proyecto
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Eliminando elementos actuales del Project #$PROJECT_NUMBER..."
-          items="$(gh project item-list "$PROJECT_NUMBER" --owner "$OWNER" --format json --limit 100)"
-          echo "$items" | jq -r '.items[]?.id' | while read -r item_id; do
-            [ -z "$item_id" ] && continue
-            gh project item-delete "$PROJECT_NUMBER" --owner "$OWNER" --id "$item_id"
-          done
-          echo "Proyecto limpio."
-
-      - name: Obtener campos del proyecto
+      - name: Obtener ID del proyecto
         shell: bash
         run: |
           set -euo pipefail
           PROJECT_ID="$(gh project view "$PROJECT_NUMBER" --owner "$OWNER" --format json --jq '.id')"
+          echo "PROJECT_ID=$PROJECT_ID" >> "$GITHUB_ENV"
+          echo "Project encontrado: $PROJECT_ID"
+
+      - name: Eliminar elementos actuales mediante API
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Limpiando elementos actuales..."
+          gh project item-list "$PROJECT_NUMBER" --owner "$OWNER" --format json --limit 100 --jq '.items[].id' > /tmp/items.txt
+          while IFS= read -r item_id; do
+            [ -z "$item_id" ] && continue
+            echo "Eliminando $item_id"
+            gh api graphql \
+              -f query='mutation($projectId:ID!,$itemId:ID!){deleteProjectV2Item(input:{projectId:$projectId,itemId:$itemId}){deletedItemId}}' \
+              -F projectId="$PROJECT_ID" \
+              -F itemId="$item_id" > /dev/null
+          done < /tmp/items.txt
+          echo "Limpieza terminada."
+
+      - name: Obtener IDs de campos
+        shell: bash
+        run: |
+          set -euo pipefail
           FIELDS="$(gh project field-list "$PROJECT_NUMBER" --owner "$OWNER" --format json --limit 100)"
           STATUS_FIELD_ID="$(echo "$FIELDS" | jq -r '.fields[] | select(.name=="Status") | .id')"
           TODO_OPTION_ID="$(echo "$FIELDS" | jq -r '.fields[] | select(.name=="Status") | .options[]? | select(.name=="Por hacer") | .id')"
@@ -36,14 +47,10 @@ jobs:
           P1_OPTION_ID="$(echo "$FIELDS" | jq -r '.fields[] | select(.name=="Priority") | .options[]? | select(.name=="P1") | .id')"
           P2_OPTION_ID="$(echo "$FIELDS" | jq -r '.fields[] | select(.name=="Priority") | .options[]? | select(.name=="P2") | .id')"
           ESTIMATE_FIELD_ID="$(echo "$FIELDS" | jq -r '.fields[] | select(.name=="Estimate") | .id')"
-          for v in PROJECT_ID STATUS_FIELD_ID TODO_OPTION_ID PRIORITY_FIELD_ID P1_OPTION_ID P2_OPTION_ID ESTIMATE_FIELD_ID; do
-            if [ -z "${!v}" ] || [ "${!v}" = "null" ]; then
-              echo "Falta el dato requerido: $v" >&2
-              exit 1
-            fi
+          for v in STATUS_FIELD_ID TODO_OPTION_ID PRIORITY_FIELD_ID P1_OPTION_ID P2_OPTION_ID ESTIMATE_FIELD_ID PROJECT_ID; do
+            if [ -z "${!v}" ] || [ "${!v}" = "null" ]; then echo "Falta: $v" >&2; exit 1; fi
           done
           {
-            echo "PROJECT_ID=$PROJECT_ID"
             echo "STATUS_FIELD_ID=$STATUS_FIELD_ID"
             echo "TODO_OPTION_ID=$TODO_OPTION_ID"
             echo "PRIORITY_FIELD_ID=$PRIORITY_FIELD_ID"
@@ -52,7 +59,7 @@ jobs:
             echo "ESTIMATE_FIELD_ID=$ESTIMATE_FIELD_ID"
           } >> "$GITHUB_ENV"
 
-      - name: Crear exactamente 15 historias
+      - name: Crear exactamente las 15 historias
         shell: bash
         run: |
           set -euo pipefail
@@ -84,9 +91,10 @@ jobs:
           add_story 'HU-14' 'Analítica financiera (ERI)' 'Registrar gastos' 'Como administrador, quiero registrar los gastos del alojamiento para conocer los costos relacionados con su operación.' $'1. Registrar concepto, valor y fecha.\n2. Asociar el gasto al alojamiento.\n3. Permitir consultar los gastos registrados.' 'P1' '3' 'Siguiente'
           add_story 'HU-15' 'Analítica financiera (ERI)' 'Consultar información financiera' 'Como propietario, quiero consultar los ingresos y gastos por periodo para conocer el resultado de la operación y apoyar la toma de decisiones.' $'1. Permitir seleccionar un periodo.\n2. Mostrar ingresos y gastos del periodo.\n3. Presentar el resultado de la operación de forma clara.' 'P1' '5' 'Siguiente'
 
-      - name: Verificar resultado
+      - name: Verificar que queden 15 elementos
         shell: bash
         run: |
           set -euo pipefail
-          echo "=== Resultado final ==="
-          gh project item-list "$PROJECT_NUMBER" --owner "$OWNER" --limit 100 --field "Status" --field "Priority" --field "Estimate"
+          COUNT="$(gh project item-list "$PROJECT_NUMBER" --owner "$OWNER" --format json --limit 100 --jq '.items | length')"
+          echo "Total de elementos: $COUNT"
+          test "$COUNT" -eq 15
