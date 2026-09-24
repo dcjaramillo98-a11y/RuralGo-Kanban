@@ -8,15 +8,20 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
-      OWNER: dcjaramillo98-a11y
       PROJECT_NUMBER: "1"
 
     steps:
+      - name: Verificar acceso al Project
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh project view "$PROJECT_NUMBER" --owner "@me" > /dev/null
+          echo "Acceso correcto al Project #$PROJECT_NUMBER"
+
       - name: Crear historias de usuario
         shell: bash
         run: |
           set -euo pipefail
-          echo "Iniciando carga de historias en el Project #$PROJECT_NUMBER"
 
           add_story() {
             local id="$1"
@@ -30,15 +35,16 @@ jobs:
             local body
             local item_id
 
-            body="$story"$'\n\n'
+            body="$story"$'\n\n'"### Criterios de aceptación"$'\n'"$criteria"$'\n\n'"**Epopeya:** $epic"$'\n'"**Prioridad:** $priority"$'\n'"**Puntos de historia:** $points"$'\n'"**Sprint:** $sprint"$'\n'"**Estado inicial:** Por hacer"
+
             echo "Creando $id - $title"
-            item_id="$(gh project item-create "$PROJECT_NUMBER" --owner "$OWNER" --title "$title" --body "$body" --format json --jq '.id')"
+            item_id="$(gh project item-create "$PROJECT_NUMBER" --owner "@me" --title "$title" --body "$body" --format json --jq '.id')"
 
-            gh project item-edit "$PROJECT_NUMBER" --owner "$OWNER" --id "$item_id" --field "Status" --value "Por hacer"
-            gh project item-edit "$PROJECT_NUMBER" --owner "$OWNER" --id "$item_id" --field "Priority" --value "$priority"
-            gh project item-edit "$PROJECT_NUMBER" --owner "$OWNER" --id "$item_id" --field "Estimate" --number "$points"
+            gh project item-edit "$PROJECT_NUMBER" --owner "@me" --id "$item_id" --field "Status" --value "Por hacer"
+            gh project item-edit "$PROJECT_NUMBER" --owner "@me" --id "$item_id" --field "Priority" --value "$priority"
+            gh project item-edit "$PROJECT_NUMBER" --owner "@me" --id "$item_id" --field "Estimate" --number "$points"
 
-            echo "OK: $id - $title"
+            echo "✓ $id - $title"
           }
 
           add_story 'HU-01' 'Gestión de usuarios y acceso' 'Registrar usuarios' 'Como administrador, quiero registrar usuarios para que las personas autorizadas puedan utilizar RuralGo según su rol.' $'1. Permitir registrar nombre, correo, contraseña y rol.\n2. Validar los datos obligatorios.\n3. Confirmar el registro correctamente.' 'P1' '3' 'Actual'
@@ -57,7 +63,8 @@ jobs:
           add_story 'HU-14' 'Analítica financiera (ERI)' 'Registrar gastos' 'Como administrador, quiero registrar los gastos del alojamiento para conocer los costos relacionados con su operación.' $'1. Registrar concepto, valor y fecha.\n2. Asociar el gasto al alojamiento.\n3. Permitir consultar los gastos registrados.' 'P1' '3' 'Siguiente'
           add_story 'HU-15' 'Analítica financiera (ERI)' 'Consultar información financiera' 'Como propietario, quiero consultar los ingresos y gastos por periodo para conocer el resultado de la operación y apoyar la toma de decisiones.' $'1. Permitir seleccionar un periodo.\n2. Mostrar ingresos y gastos del periodo.\n3. Presentar el resultado de la operación de forma clara.' 'P1' '5' 'Siguiente'
 
-      - name: Mostrar resumen
+      - name: Mostrar resultado
         shell: bash
         run: |
-          gh project item-list "$PROJECT_NUMBER" --owner "$OWNER" --limit 100 --field "Status" --field "Priority" --field "Estimate"
+          echo "=== Historias del Project RuralGo ==="
+          gh project item-list "$PROJECT_NUMBER" --owner "@me" --limit 100 --field "Status" --field "Priority" --field "Estimate"
