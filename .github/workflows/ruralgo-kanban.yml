@@ -16,79 +16,45 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Verificando Project #$PROJECT_NUMBER de $OWNER..."
           gh project view "$PROJECT_NUMBER" --owner "$OWNER" > /dev/null
-          echo "Acceso correcto."
+          echo "Proyecto accesible: $OWNER / #$PROJECT_NUMBER"
 
       - name: Crear historias de usuario
         shell: bash
         run: |
           set -euo pipefail
-
-          # Formato:
-          # HU | Epopeya | Título | Historia | Criterios | Prioridad | Puntos | Sprint
-          stories="$(cat <<'EOF'
-          HU-01|Gestión de usuarios y acceso|Registrar usuarios|Como administrador, quiero registrar usuarios para que las personas autorizadas puedan utilizar RuralGo según su rol.|1. Permitir registrar nombre, correo, contraseña y rol.\n2. Validar los datos obligatorios.\n3. Confirmar el registro correctamente.|P1|3|Actual
-          HU-02|Gestión de usuarios y acceso|Iniciar sesión|Como usuario registrado, quiero iniciar sesión de forma segura para acceder a las funciones de RuralGo según mi rol.|1. Validar correo y contraseña.\n2. Mostrar mensaje cuando las credenciales sean incorrectas.\n3. Permitir el acceso según el rol.|P1|3|Actual
-          HU-03|Gestión de usuarios y acceso|Administrar roles|Como administrador, quiero asignar y modificar roles para controlar el acceso a las funciones de RuralGo.|1. Mostrar los roles disponibles.\n2. Permitir asignar un rol a cada usuario.\n3. Aplicar los permisos correspondientes.|P2|2|Actual
-          HU-04|Reservas|Consultar disponibilidad|Como cliente, quiero consultar la disponibilidad de los alojamientos para elegir fechas que estén libres.|1. Permitir seleccionar fecha de entrada y salida.\n2. Mostrar los alojamientos disponibles.\n3. No mostrar alojamientos con fechas ocupadas.|P1|5|Actual
-          HU-05|Reservas|Registrar una reserva|Como administrador, quiero registrar una reserva con los datos del cliente y del alojamiento para evitar errores y conflictos de fechas.|1. Registrar cliente, alojamiento y fechas.\n2. Validar que no exista otra reserva para el mismo periodo.\n3. Guardar la reserva con su información completa.|P1|5|Actual
-          HU-06|Reservas|Consultar reservas|Como administrador, quiero consultar las reservas para visualizar clientes, fechas, alojamiento y estado de cada reserva.|1. Mostrar las reservas registradas.\n2. Permitir consultar cliente, fechas y alojamiento.\n3. Mostrar el estado actualizado de cada reserva.|P1|3|Siguiente
-          HU-07|Reservas|Gestionar estado de reserva|Como administrador, quiero actualizar el estado de una reserva para mantener controlado su ciclo desde la solicitud hasta su finalización.|1. Permitir estados pendiente, confirmada, cancelada y completada.\n2. Guardar cada cambio de estado.\n3. Mostrar el estado vigente de la reserva.|P2|3|Siguiente
-          HU-08|Contratación digital|Generar contrato digital|Como administrador, quiero generar un contrato digital asociado a la reserva para formalizar las condiciones de la estadía.|1. Generar el contrato con los datos de la reserva.\n2. Asociarlo al cliente y alojamiento.\n3. Permitir consultar el documento generado.|P1|5|Siguiente
-          HU-09|Contratación digital|Consultar contrato digital|Como cliente, quiero consultar mi contrato digital para conocer las condiciones de la reserva y la estadía.|1. Mostrar el contrato asociado a la reserva.\n2. Permitir consultar sus condiciones.\n3. Restringir el acceso a usuarios autorizados.|P2|3|Siguiente
-          HU-10|Inventario operativo|Registrar inventario|Como personal operativo, quiero registrar los elementos del alojamiento para conocer las cantidades y su estado.|1. Registrar elemento, cantidad y estado.\n2. Asociar el inventario al alojamiento.\n3. Guardar la información correctamente.|P1|5|Siguiente
-          HU-11|Inventario operativo|Revisar inventario antes del ingreso|Como personal operativo, quiero revisar el inventario antes del ingreso del huésped para dejar constancia del estado inicial del alojamiento.|1. Mostrar el inventario del alojamiento.\n2. Permitir verificar cantidades y estado.\n3. Registrar la revisión realizada.|P1|3|Siguiente
-          HU-12|Inventario operativo|Registrar novedades del inventario|Como personal operativo, quiero registrar daños o elementos faltantes con evidencia para dejar trazabilidad de las novedades.|1. Permitir registrar daño o faltante.\n2. Asociar la novedad al inventario y alojamiento.\n3. Permitir adjuntar evidencia cuando corresponda.|P1|5|Siguiente
-          HU-13|Analítica financiera (ERI)|Registrar ingresos|Como administrador, quiero registrar los ingresos generados por las reservas para llevar control de los movimientos del alojamiento.|1. Registrar valor y fecha del ingreso.\n2. Asociarlo a la reserva correspondiente.\n3. Permitir consultar los ingresos registrados.|P1|3|Siguiente
-          HU-14|Analítica financiera (ERI)|Registrar gastos|Como administrador, quiero registrar los gastos del alojamiento para conocer los costos relacionados con su operación.|1. Registrar concepto, valor y fecha.\n2. Asociar el gasto al alojamiento.\n3. Permitir consultar los gastos registrados.|P1|3|Siguiente
-          HU-15|Analítica financiera (ERI)|Consultar información financiera|Como propietario, quiero consultar los ingresos y gastos por periodo para conocer el resultado de la operación y apoyar la toma de decisiones.|1. Permitir seleccionar un periodo.\n2. Mostrar ingresos y gastos del periodo.\n3. Presentar el resultado de la operación de forma clara.|P1|5|Siguiente
-          EOF
-          )"
-
-          existing="$(gh project item-list "$PROJECT_NUMBER" --owner "$OWNER" --limit 100 2>/dev/null || true)"
-
-          while IFS='|' read -r id epic title story criteria priority points sprint; do
-            [ -z "$id" ] && continue
-
-            if printf '%s\n' "$existing" | grep -Fq "$title"; then
-              echo "Ya existe: $title — se omite."
-              continue
-            fi
-
+          create_item() {
+            local id="$1" epic="$2" title="$3" story="$4" criteria="$5" priority="$6" points="$7" sprint="$8"
+            local body
             body="$(printf '%b' "$story\n\n### Criterios de aceptación\n$criteria\n\n**Epopeya:** $epic\n**Prioridad:** $priority\n**Puntos de historia:** $points\n**Sprint:** $sprint\n**Estado inicial:** Por hacer")"
+            echo "Creando $id - $title..."
+            gh project item-create "$PROJECT_NUMBER" --owner "$OWNER" --title "$title" --body "$body"
+            echo "✓ $title"
+          }
 
-            echo "Creando: $id — $title"
+          while IFS=$'\t' read -r id epic title story criteria priority points sprint; do
+            [ -z "$id" ] && continue
+            create_item "$id" "$epic" "$title" "$story" "$criteria" "$priority" "$points" "$sprint"
+          done <<'EOF'
+HU-01	Gestión de usuarios y acceso	Registrar usuarios	Como administrador, quiero registrar usuarios para que las personas autorizadas puedan utilizar RuralGo según su rol.	1. Permitir registrar nombre, correo, contraseña y rol.\n2. Validar los datos obligatorios.\n3. Confirmar el registro correctamente.	P1	3	Actual
+HU-02	Gestión de usuarios y acceso	Iniciar sesión	Como usuario registrado, quiero iniciar sesión de forma segura para acceder a las funciones de RuralGo según mi rol.	1. Validar correo y contraseña.\n2. Mostrar mensaje cuando las credenciales sean incorrectas.\n3. Permitir el acceso según el rol.	P1	3	Actual
+HU-03	Gestión de usuarios y acceso	Administrar roles	Como administrador, quiero asignar y modificar roles para controlar el acceso a las funciones de RuralGo.	1. Mostrar los roles disponibles.\n2. Permitir asignar un rol a cada usuario.\n3. Aplicar los permisos correspondientes.	P2	2	Actual
+HU-04	Reservas	Consultar disponibilidad	Como cliente, quiero consultar la disponibilidad de los alojamientos para elegir fechas que estén libres.	1. Permitir seleccionar fecha de entrada y salida.\n2. Mostrar los alojamientos disponibles.\n3. No mostrar alojamientos con fechas ocupadas.	P1	5	Actual
+HU-05	Reservas	Registrar una reserva	Como administrador, quiero registrar una reserva con los datos del cliente y del alojamiento para evitar errores y conflictos de fechas.	1. Registrar cliente, alojamiento y fechas.\n2. Validar que no exista otra reserva para el mismo periodo.\n3. Guardar la reserva con su información completa.	P1	5	Actual
+HU-06	Reservas	Consultar reservas	Como administrador, quiero consultar las reservas para visualizar clientes, fechas, alojamiento y estado de cada reserva.	1. Mostrar las reservas registradas.\n2. Permitir consultar cliente, fechas y alojamiento.\n3. Mostrar el estado actualizado de cada reserva.	P1	3	Siguiente
+HU-07	Reservas	Gestionar estado de reserva	Como administrador, quiero actualizar el estado de una reserva para mantener controlado su ciclo desde la solicitud hasta su finalización.	1. Permitir estados pendiente, confirmada, cancelada y completada.\n2. Guardar cada cambio de estado.\n3. Mostrar el estado vigente de la reserva.	P2	3	Siguiente
+HU-08	Contratación digital	Generar contrato digital	Como administrador, quiero generar un contrato digital asociado a la reserva para formalizar las condiciones de la estadía.	1. Generar el contrato con los datos de la reserva.\n2. Asociarlo al cliente y alojamiento.\n3. Permitir consultar el documento generado.	P1	5	Siguiente
+HU-09	Contratación digital	Consultar contrato digital	Como cliente, quiero consultar mi contrato digital para conocer las condiciones de la reserva y la estadía.	1. Mostrar el contrato asociado a la reserva.\n2. Permitir consultar sus condiciones.\n3. Restringir el acceso a usuarios autorizados.	P2	3	Siguiente
+HU-10	Inventario operativo	Registrar inventario	Como personal operativo, quiero registrar los elementos del alojamiento para conocer las cantidades y su estado.	1. Registrar elemento, cantidad y estado.\n2. Asociar el inventario al alojamiento.\n3. Guardar la información correctamente.	P1	5	Siguiente
+HU-11	Inventario operativo	Revisar inventario antes del ingreso	Como personal operativo, quiero revisar el inventario antes del ingreso del huésped para dejar constancia del estado inicial del alojamiento.	1. Mostrar el inventario del alojamiento.\n2. Permitir verificar cantidades y estado.\n3. Registrar la revisión realizada.	P1	3	Siguiente
+HU-12	Inventario operativo	Registrar novedades del inventario	Como personal operativo, quiero registrar daños o elementos faltantes con evidencia para dejar trazabilidad de las novedades.	1. Permitir registrar daño o faltante.\n2. Asociar la novedad al inventario y alojamiento.\n3. Permitir adjuntar evidencia cuando corresponda.	P1	5	Siguiente
+HU-13	Analítica financiera (ERI)	Registrar ingresos	Como administrador, quiero registrar los ingresos generados por las reservas para llevar control de los movimientos del alojamiento.	1. Registrar valor y fecha del ingreso.\n2. Asociarlo a la reserva correspondiente.\n3. Permitir consultar los ingresos registrados.	P1	3	Siguiente
+HU-14	Analítica financiera (ERI)	Registrar gastos	Como administrador, quiero registrar los gastos del alojamiento para conocer los costos relacionados con su operación.	1. Registrar concepto, valor y fecha.\n2. Asociar el gasto al alojamiento.\n3. Permitir consultar los gastos registrados.	P1	3	Siguiente
+HU-15	Analítica financiera (ERI)	Consultar información financiera	Como propietario, quiero consultar los ingresos y gastos por periodo para conocer el resultado de la operación y apoyar la toma de decisiones.	1. Permitir seleccionar un periodo.\n2. Mostrar ingresos y gastos del periodo.\n3. Presentar el resultado de la operación de forma clara.	P1	5	Siguiente
+EOF
 
-            item_id="$(
-              gh project item-create "$PROJECT_NUMBER" \
-                --owner "$OWNER" \
-                --title "$title" \
-                --body "$body" \
-                --format json | jq -r '.id'
-            )"
-
-            # Priority y Estimate son campos existentes en la plantilla del proyecto.
-            gh project item-edit "$PROJECT_NUMBER" \
-              --owner "$OWNER" \
-              --id "$item_id" \
-              --project-id "$(gh project view "$PROJECT_NUMBER" --owner "$OWNER" --format json | jq -r '.id')" \
-              --field "Priority" \
-              --value "$priority"
-
-            gh project item-edit "$PROJECT_NUMBER" \
-              --owner "$OWNER" \
-              --id "$item_id" \
-              --project-id "$(gh project view "$PROJECT_NUMBER" --owner "$OWNER" --format json | jq -r '.id')" \
-              --field "Estimate" \
-              --number "$points"
-
-            echo "✓ $title creado."
-          done <<< "$stories"
-
-      - name: Resumen
+      - name: Mostrar resumen
         shell: bash
         run: |
-          echo "=== Historias actuales del proyecto ==="
-          gh project item-list "$PROJECT_NUMBER" --owner "$OWNER" --limit 100 \
-            --field "Status" --field "Priority" --field "Estimate"
+          echo "=== Elementos actuales del Project #$PROJECT_NUMBER ==="
+          gh project item-list "$PROJECT_NUMBER" --owner "$OWNER" --limit 100
